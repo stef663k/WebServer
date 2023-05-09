@@ -16,13 +16,16 @@ pub fn main() !void {
 
     while (true) {
         const connection = try streamServer.accept();
-        try handlerConnection(connection.stream);
+        try handlerConnection(gpa.allocator(), connection.stream);
     }
 }
 
 fn handlerConnection(allocator: std.mem.Allocator, stream: net.Stream) !void {
+    _ = allocator;
     defer stream.close();
-    var first_line = stream.reader().readUntilDelimiterArrayList(allocator, '\n', std.math.maxInt(usize));
-    _ = first_line;
+    // var first_line = stream.reader()
+    // .readUntilDelimiterArrayList(allocator, '\n',
+    // std.math.maxInt(usize));
+    // _ = first_line;
     try stream.writer().print("Hello world", .{});
 }
