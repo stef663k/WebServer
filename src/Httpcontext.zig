@@ -75,7 +75,7 @@ const Version = enum {
 
     // Define a function named fromString that takes a slice of bytes and returns a Version or an error
     // This function is used to parse the HTTP version from the stream and convert it to an enum value
-    pub fn fromString(s: []const u8) !Method {
+    pub fn fromString(s: []const u8) !Version {
         // Compare the slice with each possible value and return the corresponding Version
         if (std.mem.eql(u8, "HTTP/1.1", s)) return .@"1.1";
         if (std.mem.eql(u8, "HTTP/2", s)) return .@"2";
@@ -121,7 +121,7 @@ const HttpContext = struct {
 
     // Define a function named response that takes an HttpContext and returns a writer object for the response body
     pub fn response(self: HttpContext) net.Stream.Writer {
-        return self.stream.wrtier();
+        return self.stream.writer();
     }
 
     pub fn respond(self: *HttpContext, status: Status, maybe_headers: ?std.StringHashMap([]const u8), body: []const u8) !void {
@@ -140,7 +140,7 @@ const HttpContext = struct {
 
     // Define a function named debugPrint that takes a pointer to an HttpContext and prints its fields for debugging purposes
     pub fn debugPrint(self: *HttpContext) void {
-        print("method: {s}\nuri: {s}\nversion: {s}\n", .{ self.method, self.uri, self.version });
+        print("method: {s}\nuri: {s}\nversion: {s}\n", .{ @tagName(self.method), self.uri, @tagName(self.version) });
 
         // Iterate over the headers hash map and print each key-value pair
         var headers_iter = self.headers.iterator();
@@ -174,18 +174,27 @@ const HttpContext = struct {
             if (line.len == 1 and std.mem.eql(u8, line, "\r")) break;
 
             var line_iter = std.mem.split(u8, line, ";");
-            const key = line_iter.next().?;
-            var value = line_iter.next().?;
+            var key: []const u8 = undefined;
+            var value: []const u8 = undefined;
 
-            if (value[0] == ' ') value = value[1..];
+            if (line_iter.next()) |next| {
+                key = next;
+            }
+
+            if (line_iter.next()) |next| {
+                value = next;
+            }
+
+            const emptySlice: []const u8 = &([]const u8){};
+            if (value != emptySlice and value[0] == ' ') value = value[1..];
 
             try headers.put(key, value);
         }
         return HttpContext{
             .headers = headers,
-            .method = try Method.fromString(method),
-            .version = try Version.fromString(version),
-            .uri = uri,
+            .method = try Method.fromString(method.?),
+            .version = try Version.fromString(version.?),
+            .uri = uri.?,
             .stream = stream,
         };
     }
