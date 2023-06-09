@@ -7,6 +7,7 @@ const print = std.debug.print;
 const http = @import("HttpContext.zig");
 const httpContext = http.HttpContext;
 const status = http.Status;
+const HTTPServer = http.HttpServer;
 
 pub const io_mode = .evented;
 
@@ -15,18 +16,7 @@ pub fn main() !void {
     var gpa = GenerealPurposeAllocator(.{}){};
     // Get a reference to the allocator interface
     const allocator = gpa.allocator();
-    _ = allocator;
-}
 
-// handles the connection asynchrously
-pub fn handlerConnection(allocator: std.mem.Allocator, stream: net.Stream) !void {
-    // Close the stream
-    defer stream.close();
-    // Write a simple response to the client
-    var http_context = try httpContext.init(allocator, stream);
-
-    // prints httpcontext
-    http_context.debugPrint();
-
-    try http_context.respond(status.OK, null, "Hello");
+    var server = try HTTPServer.init(allocator, .{});
+    try server.listen();
 }

@@ -38,6 +38,7 @@ pub const Method = enum {
 
 // Define HTTP versions as enums
 pub const Version = enum {
+    @"0.9",
     @"1.1",
     @"2",
 
@@ -45,6 +46,7 @@ pub const Version = enum {
     // This function is used to parse the HTTP version from the stream and convert it to an enum value
     pub fn fromString(s: []const u8) !Version {
         // Compare the slice with each possible value and return the corresponding Version
+        if (std.mem.eql(u8, "HTTP/0.9", s)) return .@"0.9";
         if (std.mem.eql(u8, "HTTP/1.1", s)) return .@"1.1";
         if (std.mem.eql(u8, "HTTP/2", s)) return .@"2";
         // If none of the values match, return an error
@@ -52,6 +54,7 @@ pub const Version = enum {
     }
 
     pub fn asString(self: Version) []const u8 {
+        if (self == Version.@"0.9") return "HTTP/0.9";
         if (self == Version.@"1.1") return "HTTP/1.1";
         if (self == Version.@"2") return "HTTP/2";
         unreachable;
@@ -158,41 +161,59 @@ pub const HttpContext = struct {
     }
 };
 
-const Connection = struct {
-    frame: @Frame(handlerConnection),
-};
-
 pub const HttpServer = struct {
     allocator: Allocator,
+    config: Config,
     address: net.Address,
-    stream_server: net.StreamServer,
-    frame: std.ArrayList(*Connection),
+    stream_server: net.StreamServer = undefined,
+    frames: std.ArrayList(*Connection),
+
+    const Connection = struct {
+        frames: @Frame(handlerConnection),
+    };
 
     pub const Config = struct {
         address: []const u8 = "127.0.0.1",
-        port: usize = 8080,
+        port: u16 = 8080,
     };
 
     pub fn deinit(self: *HttpServer) !void {
         self.stream_server.close();
         self.stream_server.deinit();
     }
-    pub fn init(allocator: Allocator, config: Config) !*HttpServer {
-        var streamServer = StreamServer.init(.{});
-        const address = try Address.resolveIp(config.address, config.port);
-        // Start listening for incoming connections on the address
-        try streamServer.listen(address);
+    // handles the connection asynchrously
+    fn handlerConnection(allocator: std.mem.Allocator, stream: net.Stream) !void {
+        // Close the stream
+        defer stream.close();
+        // Write a simple response to the client
+        var http_context = try HttpContext.init(allocator, stream);
 
-        var frames = std.ArrayList(*Connection).init(allocator);
+        // prints httpcontext
+        http_context.debugPrint();
+
+        try http_context.respond(Status.OK, null, "Hello");
+    }
+    pub fn init(allocator: Allocator, config: Config) !HttpServer {
+        return HttpServer{
+            .allocator = allocator,
+            .config = config,
+            .address = try Address.resolveIp(config.address, config.port),
+            .frames = std.ArrayList(*Connection).init(allocator),
+        };
+    }
+    pub fn listen(self: *HttpServer) !void {
+        var streamServer = StreamServer.init(.{});
+        // Start listening for incoming connections on the address
+        try streamServer.listen(self.address);
 
         while (true) {
             // Accept a new connection from the stream server
             const connection = try streamServer.accept();
-            var conn = try allocator.create(Connection);
+            var conn = try self.allocator.create(Connection);
             conn.* = .{
-                .frame = async handlerConnection(allocator, connection.stream),
+                .frames = async handlerConnection(self.allocator, connection.stream),
             };
-            try frames.append(conn);
+            try self.frames.append(conn);
         }
     }
 };
